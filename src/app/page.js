@@ -2,7 +2,6 @@
 import { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Wifi, WifiOff, Hourglass } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
 const QUIZ_DATA = {
@@ -84,7 +83,7 @@ const SyncedTimerBar = ({ game }) => {
             const elapsed = Date.now() - game.questionStartTime;
             const remaining = Math.max(0, question.timeLimit * 1000 - elapsed);
             setPercent((remaining / (question.timeLimit * 1000)) * 100);
-        }, 50); // Update every 50ms for smooth animation
+        }, 50);
 
         return () => clearInterval(interval);
     }, [game.state, game.questionStartTime, question.timeLimit]);
@@ -110,24 +109,28 @@ const Confetti = () => {
                 height: `${Math.random() * 10 + 5}px`,
                 backgroundColor: colors[Math.floor(Math.random() * colors.length)],
             }}
-            animate={{
-                y: '120vh',
-                x: `${Math.random() * 200 - 100}px`,
-                rotate: Math.random() * 360,
-            }}
-            transition={{
-                duration: Math.random() * 3 + 2,
-                repeat: Infinity,
-                repeatType: 'loop',
-                delay: Math.random() * 5,
-                ease: 'linear',
-            }}
+            animate={{ y: '120vh', x: `${Math.random() * 200 - 100}px`, rotate: Math.random() * 360, }}
+            transition={{ duration: Math.random() * 3 + 2, repeat: Infinity, repeatType: 'loop', delay: Math.random() * 5, ease: 'linear', }}
         />
     ));
 };
+
+// --- SVG Icons (Replacement for lucide-react) ---
+const HourglassIcon = ({ className }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>
+  </svg>
+);
+
+const WifiOffIcon = ({ className }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22 12.55" /><path d="M2 12.55a16 16 0 0 1 4.34-5.62" /><path d="M1.42 9a4 4 0 0 1 6.2-5.1" />
+  </svg>
+);
+
 const ConnectionStatus = ({ status }) => {
     if (status === 'connected') return null;
-    const Icon = status === 'error' ? WifiOff : Hourglass;
+    const Icon = status === 'error' ? WifiOffIcon : HourglassIcon;
     const text = status === 'error' ? 'Connection Lost. Attempting to reconnect...' : 'Connecting...';
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 text-white">
@@ -288,7 +291,7 @@ const FinishedView = ({ game, isHost, onHostNew }) => {
                     </motion.div>
                 ))}
             </div>
-            {isHost && <div className="mt-8 relative z-10"><Button onClick={onHostNew} className="bg-green-600 hover:bg-green-700"><Sparkles className="mr-2"/> Play Again</Button></div>}
+            {isHost && <div className="mt-8 relative z-10"><Button onClick={onHostNew} className="bg-green-600 hover:bg-green-700"><span className="mr-2 text-2xl" role="img" aria-label="sparkles">✨</span> Play Again</Button></div>}
         </Card>
     );
 };
@@ -305,7 +308,6 @@ export default function QuizGamePage() {
     const prevGameRef = useRef(null);
 
     useEffect(() => {
-        // Initialize IDs and socket connection once on the client
         const resolvedPlayerId = getPlayerId();
         const resolvedHostId = getHostId();
         setPlayerId(resolvedPlayerId);
@@ -340,7 +342,6 @@ export default function QuizGamePage() {
     }, []);
 
     useEffect(() => {
-        // Manage game state updates from the socket
         if (!socket) return;
         
         const handleGameUpdate = (updatedGame) => {
