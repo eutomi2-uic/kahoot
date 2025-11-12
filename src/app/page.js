@@ -5,13 +5,59 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // --- CONFIG & CONSTANTS ---
 const QUIZ_DATA = {
-  title: "SLO BuRN Quiz",
-  questions: [
-    { text: "What is the largest volcano in our solar system?", timeLimit: 20, options: [{ text: "Mauna Kea", isCorrect: false }, { text: "Mount Everest", isCorrect: false }, { text: "Olympus Mons on Mars", isCorrect: true }, { text: "Tamu Massif", isCorrect: false }] },
-    { text: "Which planet is known as the 'Red Planet'?", timeLimit: 15, options: [{ text: "Jupiter", isCorrect: false }, { text: "Mars", isCorrect: true }, { text: "Venus", isCorrect: false }, { text: "Saturn", isCorrect: false }] },
-    { text: "What is the chemical symbol for Gold?", timeLimit: 25, options: [{ text: "Au", isCorrect: true }, { text: "Ag", isCorrect: false }, { text: "Gd", isCorrect: false }, { text: "Go", isCorrect: false }] },
-  ],
-};
+  "title": "SLO BuRN Quiz - Round 1: Check-In with Yourself",
+  "questions": [
+    {
+      "text": "When you feel anxious, what’s one of the most effective ways to calm your nervous system?",
+      "timeLimit": 20,
+      "options": [
+        { "text": "Ignoring your feelings", "isCorrect": false },
+        { "text": "Deep breathing and grounding techniques", "isCorrect": true },
+        { "text": "Overthinking the situation", "isCorrect": false },
+        { "text": "Distracting yourself with work", "isCorrect": false }
+      ]
+    },
+    {
+      "text": "True or False: It’s possible to feel both grateful and sad at the same time.",
+      "timeLimit": 15,
+      "options": [
+        { "text": "True", "isCorrect": true },
+        { "text": "False", "isCorrect": false }
+      ]
+    },
+    {
+      "text": "What’s a simple daily habit proven to improve mood and reduce stress?",
+      "timeLimit": 25,
+      "options": [
+        { "text": "Drinking more caffeine", "isCorrect": false },
+        { "text": "Journaling or expressing gratitude", "isCorrect": true },
+        { "text": "Avoiding social interaction", "isCorrect": false },
+        { "text": "Staying up late", "isCorrect": false }
+      ]
+    },
+    {
+      "text": "When you’re overwhelmed, what’s a healthy first step?",
+      "timeLimit": 20,
+      "options": [
+        { "text": "Pretend everything is fine", "isCorrect": false },
+        { "text": "Ask for help", "isCorrect": true },
+        { "text": "Push harder through the stress", "isCorrect": false },
+        { "text": "Compare yourself to others", "isCorrect": false }
+      ]
+    },
+    {
+      "text": "Which statement best describes mindfulness?",
+      "timeLimit": 25,
+      "options": [
+        { "text": "Stopping all your thoughts", "isCorrect": false },
+        { "text": "Paying attention to the present moment without judgment", "isCorrect": true },
+        { "text": "Trying to feel happy all the time", "isCorrect": false },
+        { "text": "An escape from reality", "isCorrect": false }
+      ]
+    }
+  ]
+}
+
 const COLORS = ["bg-red-500", "bg-blue-500", "bg-yellow-500", "bg-green-500"];
 const SHAPES = ['▲', '◆', '●', '■'];
 const PLAYER_ID_KEY = 'quiz-player-id';
