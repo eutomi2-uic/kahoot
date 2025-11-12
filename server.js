@@ -10,76 +10,79 @@ const app = next({ dev, hostname, port });
 const handler = app.getRequestHandler();
 
 let currentGame = null;
-const GAME_ROOM = 'kahoot-game-room';
+const GAME_ROOM = 'quiz-game-room';
 
 app.prepare().then(() => {
   const httpServer = createServer(handler);
 
   const io = new Server(httpServer, {
-    cors: {
-      origin: "*", 
-      methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
   });
 
   console.log('Socket.IO server initialized.');
 
-  const sendGameStateToSocket = (socket) => {
-    if (!currentGame) {
-        socket.emit('game:update', null);
-        return;
-    }
+  const getPublicGameState = () => {
+    if (!currentGame) return null;
     const isQuestionState = currentGame.state === 'QUESTION';
+    
     const publicQuiz = {
       ...currentGame.quiz,
-      questions: isQuestionState
-        ? currentGame.quiz.questions.map(q => ({
-          ...q,
-          options: q.options.map(o => ({ text: o.text }))
-        }))
-        : currentGame.quiz.questions,
+      questions: currentGame.quiz.questions.map(q => ({
+        ...q,
+        options: isQuestionState
+          ? q.options.map(({ text }) => ({ text }))
+          : q.options,
+      })),
     };
-    const publicGameState = {
+
+    return {
       ...currentGame,
       quiz: publicQuiz,
       players: Array.from(currentGame.players.values()),
     };
-    socket.emit('game:update', publicGameState);
-  }
+  };
 
   const broadcastGameState = () => {
-    sendGameStateToSocket(io.to(GAME_ROOM));
-  }
+    io.to(GAME_ROOM).emit('game:update', getPublicGameState());
+  };
   
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`);
     socket.join(GAME_ROOM);
 
     socket.on('game:get-state', () => {
-      // Send the current game state ONLY to the requester
-      sendGameStateToSocket(socket);
+      socket.emit('game:update', getPublicGameState());
     });
 
-    socket.on('host:create', (quizData) => {
-      console.log(`Host ${socket.id} is creating a new game.`);
-      
-      // *** FIX: Notify OTHERS that the game ended, NOT the new host ***
+    socket.on('host:create', ({ quizData, hostId }) => {
+      console.log(`Host ${hostId} (Socket: ${socket.id}) is creating a new game.`);
       if (currentGame) {
-        socket.broadcast.to(GAME_ROOM).emit('game:ended', 'The host has started a new game.');
+        io.to(GAME_ROOM).emit('game:ended', 'The host has started a new game.');
       }
 
       currentGame = {
-        hostId: socket.id, 
+        hostId: hostId, // Persistent Host ID
+        hostSocketId: socket.id, // Current Socket ID for the host
         quiz: quizData, 
         state: 'LOBBY', 
         players: new Map(),
         currentQuestionIndex: 0, 
-        questionStartTime: null, 
-        firstCorrectPlayerId: null,
+        questionStartTime: null,
+        // For pausing
+        stateBeforePause: null,
+        timeRemainingOnPause: null,
       };
       
       console.log('New game created. State: LOBBY');
       broadcastGameState();
+    });
+
+    socket.on('host:rejoin', ({ hostId }) => {
+        if (currentGame && currentGame.hostId === hostId) {
+            console.log(`Host ${hostId} has rejoined with new socket ${socket.id}`);
+            currentGame.hostSocketId = socket.id;
+            broadcastGameState(); // Update host's new socketId if needed elsewhere
+        }
     });
 
     socket.on('player:join', ({ nickname, playerId }) => {
@@ -90,18 +93,55 @@ app.prepare().then(() => {
       }
 
       console.log(`Player joining: ${nickname} (${playerId})`);
-      const player = { id: playerId, socketId: socket.id, nickname, score: 0, answered: false };
+      const player = { id: playerId, socketId: socket.id, nickname, score: 0, answered: false, disconnected: false };
       currentGame.players.set(playerId, player);
       broadcastGameState();
     });
 
+    socket.on('player:rejoin', ({ playerId }) => {
+      if (!currentGame || !currentGame.players.has(playerId)) {
+         return socket.emit('game:ended', 'The game you were in has ended.');
+      }
+      const player = currentGame.players.get(playerId);
+      player.socketId = socket.id;
+      player.disconnected = false;
+      console.log(`Player rejoining: ${player.nickname} (${playerId})`);
+      socket.emit('game:update', getPublicGameState());
+      broadcastGameState();
+    });
+
     socket.on('game:start', () => {
-      if (currentGame && currentGame.hostId === socket.id && currentGame.state === 'LOBBY') {
+      if (currentGame && currentGame.hostSocketId === socket.id && currentGame.state === 'LOBBY') {
         console.log('Game starting...');
         currentGame.state = 'QUESTION';
         currentGame.questionStartTime = Date.now();
         broadcastGameState();
       }
+    });
+
+    socket.on('host:toggle-pause', () => {
+        if (!currentGame || currentGame.hostSocketId !== socket.id) return;
+
+        if (currentGame.state === 'PAUSED') {
+            console.log('Resuming game.');
+            currentGame.state = currentGame.stateBeforePause;
+            // Adjust start time to account for the pause duration
+            const timeLimit = currentGame.quiz.questions[currentGame.currentQuestionIndex].timeLimit * 1000;
+            currentGame.questionStartTime = Date.now() - (timeLimit - currentGame.timeRemainingOnPause);
+            currentGame.stateBeforePause = null;
+            currentGame.timeRemainingOnPause = null;
+        } else {
+            console.log('Pausing game.');
+            currentGame.stateBeforePause = currentGame.state;
+            // If pausing during a question, record remaining time
+            if (currentGame.state === 'QUESTION') {
+                const elapsed = Date.now() - currentGame.questionStartTime;
+                const timeLimit = currentGame.quiz.questions[currentGame.currentQuestionIndex].timeLimit * 1000;
+                currentGame.timeRemainingOnPause = Math.max(0, timeLimit - elapsed);
+            }
+            currentGame.state = 'PAUSED';
+        }
+        broadcastGameState();
     });
 
     socket.on('player:answer', ({ playerId, answerIndex }) => {
@@ -117,12 +157,7 @@ app.prepare().then(() => {
         if (isCorrect) {
           const timeTaken = (Date.now() - currentGame.questionStartTime) / 1000;
           const timeLimit = question.timeLimit;
-          let points = Math.round(Math.max(0, 1000 * (1 - (timeTaken / (timeLimit * 1.5)))));
-          
-          if (currentGame.firstCorrectPlayerId === null) {
-            currentGame.firstCorrectPlayerId = playerId;
-            points += 200;
-          }
+          let points = Math.round(Math.max(0, 1000 * (1 - (timeTaken / (timeLimit * 2)))));
           player.score += points;
         }
         broadcastGameState();
@@ -130,7 +165,7 @@ app.prepare().then(() => {
     });
 
     socket.on('game:next', () => {
-      if (!currentGame || currentGame.hostId !== socket.id) return;
+      if (!currentGame || currentGame.hostSocketId !== socket.id) return;
 
       if (currentGame.state === 'QUESTION') {
         currentGame.state = 'LEADERBOARD';
@@ -139,7 +174,6 @@ app.prepare().then(() => {
           currentGame.currentQuestionIndex++;
           currentGame.state = 'QUESTION';
           currentGame.questionStartTime = Date.now();
-          currentGame.firstCorrectPlayerId = null;
           currentGame.players.forEach(p => p.answered = false); 
         } else {
           currentGame.state = 'FINISHED';
@@ -152,21 +186,21 @@ app.prepare().then(() => {
       console.log(`Client disconnected: ${socket.id}`);
       if (!currentGame) return;
 
-      if (socket.id === currentGame.hostId) {
-        console.log('Host disconnected. Ending game.');
-        io.to(GAME_ROOM).emit('game:ended', 'The host has disconnected. The game is over.');
-        currentGame = null;
+      if (socket.id === currentGame.hostSocketId) {
+        console.log('Host disconnected. The game will persist.');
+        currentGame.hostSocketId = null; // Host is temporarily offline
+        broadcastGameState();
       } else {
-        let playerIdToRemove = null;
-        for (const [id, player] of currentGame.players.entries()) {
-          if (player.socketId === socket.id) {
-            playerIdToRemove = id;
+        let player = null;
+        for (const p of currentGame.players.values()) {
+          if (p.socketId === socket.id) {
+            player = p;
             break;
           }
         }
-        if (playerIdToRemove) {
-          console.log(`Player ${currentGame.players.get(playerIdToRemove).nickname} disconnected.`)
-          currentGame.players.delete(playerIdToRemove);
+        if (player) {
+          console.log(`Player ${player.nickname} disconnected.`)
+          player.disconnected = true;
           broadcastGameState();
         }
       }
