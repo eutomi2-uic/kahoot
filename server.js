@@ -3,10 +3,11 @@ const next = require('next');
 const { Server } = require('socket.io');
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
-const port = 3000;
+// CHANGE 1: Remove the hardcoded hostname. We will listen on 0.0.0.0 instead.
+// const hostname = 'localhost'; 
+const port = process.env.PORT || 3000; // CHANGE 2: Use the PORT environment variable provided by DigitalOcean, or default to 3000 for local development.
 
-const app = next({ dev, hostname, port });
+const app = next({ dev }); // CHANGE 3: When deployed, Next.js doesn't need the hostname/port here. It detects it automatically.
 const handler = app.getRequestHandler();
 
 let currentGame = null;
@@ -21,6 +22,7 @@ app.prepare().then(() => {
 
   console.log('Socket.IO server initialized.');
 
+  // ... the rest of your Socket.IO logic remains exactly the same ...
   const getPublicGameState = () => {
     if (!currentGame) return null;
     const isQuestionState = currentGame.state === 'QUESTION';
@@ -61,14 +63,13 @@ app.prepare().then(() => {
       }
 
       currentGame = {
-        hostId: hostId, // Persistent Host ID
-        hostSocketId: socket.id, // Current Socket ID for the host
+        hostId: hostId,
+        hostSocketId: socket.id,
         quiz: quizData, 
         state: 'LOBBY', 
         players: new Map(),
         currentQuestionIndex: 0, 
         questionStartTime: null,
-        // For pausing
         stateBeforePause: null,
         timeRemainingOnPause: null,
       };
@@ -81,7 +82,7 @@ app.prepare().then(() => {
         if (currentGame && currentGame.hostId === hostId) {
             console.log(`Host ${hostId} has rejoined with new socket ${socket.id}`);
             currentGame.hostSocketId = socket.id;
-            broadcastGameState(); // Update host's new socketId if needed elsewhere
+            broadcastGameState();
         }
     });
 
@@ -125,7 +126,6 @@ app.prepare().then(() => {
         if (currentGame.state === 'PAUSED') {
             console.log('Resuming game.');
             currentGame.state = currentGame.stateBeforePause;
-            // Adjust start time to account for the pause duration
             const timeLimit = currentGame.quiz.questions[currentGame.currentQuestionIndex].timeLimit * 1000;
             currentGame.questionStartTime = Date.now() - (timeLimit - currentGame.timeRemainingOnPause);
             currentGame.stateBeforePause = null;
@@ -133,7 +133,6 @@ app.prepare().then(() => {
         } else {
             console.log('Pausing game.');
             currentGame.stateBeforePause = currentGame.state;
-            // If pausing during a question, record remaining time
             if (currentGame.state === 'QUESTION') {
                 const elapsed = Date.now() - currentGame.questionStartTime;
                 const timeLimit = currentGame.quiz.questions[currentGame.currentQuestionIndex].timeLimit * 1000;
@@ -188,7 +187,7 @@ app.prepare().then(() => {
 
       if (socket.id === currentGame.hostSocketId) {
         console.log('Host disconnected. The game will persist.');
-        currentGame.hostSocketId = null; // Host is temporarily offline
+        currentGame.hostSocketId = null;
         broadcastGameState();
       } else {
         let player = null;
@@ -212,7 +211,8 @@ app.prepare().then(() => {
       console.error(err);
       process.exit(1);
     })
+    // CHANGE 4: Listen on 0.0.0.0 to accept connections from the platform's proxy.
     .listen(port, () => {
-      console.log(`> Ready on http://${hostname}:${port}`);
+      console.log(`> Ready on http://0.0.0.0:${port}`);
     });
 });
